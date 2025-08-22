@@ -1,0 +1,6 @@
+{
+  "name": "Consultor de Estratégia com IA V4",
+  "description": "Uma aplicação que gera planos estratégicos de negócios e propostas de ativação de marca, utilizando a API Gemini para fornecer análises detalhadas e acionáveis inspiradas em consultorias de ponta.",
+  "requestFramePermissions": [],
+  "prompt": ""
+}
