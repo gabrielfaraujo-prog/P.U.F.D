@@ -1,9 +1,9 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import type { 
-    StrategicAnalysisResult as RawStrategicAnalysisResult, 
-    Competitor as RawCompetitor,
+    StrategicAnalysisResult, 
+    Competitor,
     KPI, 
     ActionStep, 
     GroundingSource 
@@ -13,36 +13,9 @@ import {
     BarChartIcon, SearchIcon, LoaderIcon, SmallLoaderIcon, DownloadIcon,
     LinkIcon, GlobeIcon, InstagramIcon, FacebookIcon, TikTokIcon,
     BriefcaseIcon, TargetIcon, CheckSquareIcon, FileTextIcon,
-    AudienceIcon, HeartIcon, MegaphoneIcon, CheckIcon, CrossIcon
+    AudienceIcon, HeartIcon, MegaphoneIcon
 } from '../components/icons';
 import { ArrowUpRight, ArrowDownRight } from 'lucide-react';
-
-
-// === LOCAL TYPES FOR VALIDATION ===
-type LinkStatus = 'validating' | 'valid' | 'invalid';
-
-interface SocialLinkWithStatus {
-    url: string;
-    status: LinkStatus;
-    finalUrl: string;
-    error?: string;
-}
-
-interface ValidatedCompetitor extends Omit<RawCompetitor, 'socialPresence'> {
-    socialPresence: {
-        instagram: SocialLinkWithStatus;
-        facebook: SocialLinkWithStatus;
-        tiktok: SocialLinkWithStatus;
-        websiteUrl: SocialLinkWithStatus;
-    };
-}
-
-interface ValidatedStrategicAnalysisResult extends Omit<RawStrategicAnalysisResult, 'competitiveLandscape'> {
-    competitiveLandscape?: {
-        overview: string;
-        competitors: ValidatedCompetitor[];
-    };
-}
 
 
 // === HELPER & RENDERER ===
@@ -74,38 +47,17 @@ const MarkdownRenderer: React.FC<{ text: any }> = ({ text }) => {
 
 
 // === SUB-COMPONENTS ===
-const SocialLink: React.FC<{ platformIcon: React.ReactNode; link: SocialLinkWithStatus }> = ({ platformIcon, link }) => {
+const SocialLink: React.FC<{ platformIcon: React.ReactNode; url?: string }> = ({ platformIcon, url }) => {
+    if (!url || typeof url !== 'string' || !url.trim()) {
+        return null;
+    }
     
-    const StatusIcon = () => {
-        switch (link.status) {
-            case 'validating': return <SmallLoaderIcon />;
-            case 'valid': return <CheckIcon />;
-            case 'invalid': return (
-                <div title={`Error: ${link.error || 'Falha na validação'}`}>
-                    <CrossIcon />
-                </div>
-            );
-            default: return null;
-        }
-    };
-
-    const isClickable = link.status === 'valid';
+    const href = url.startsWith('http') ? url : `https://${url}`;
 
     return (
-        <div className="flex items-center gap-2">
-            <a 
-                href={isClickable ? link.finalUrl : undefined} 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className={`flex items-center gap-1 ${isClickable ? 'hover:text-red-400 transition-colors' : 'cursor-not-allowed'}`}
-                onClick={(e) => !isClickable && e.preventDefault()}
-            >
-                <div className={`${!isClickable ? 'opacity-50' : ''}`}>{platformIcon}</div>
-            </a>
-            <div className="w-5 h-5 flex items-center justify-center">
-                 <StatusIcon />
-            </div>
-        </div>
+        <a href={href} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-red-400 transition-colors">
+            {platformIcon}
+        </a>
     );
 };
 
@@ -132,7 +84,7 @@ const KpiCard: React.FC<{ kpi: KPI }> = ({ kpi }) => (
     </div>
 );
 
-const CompetitorCard: React.FC<{ competitor: ValidatedCompetitor }> = ({ competitor }) => (
+const CompetitorCard: React.FC<{ competitor: Competitor }> = ({ competitor }) => (
     <div className="bg-[var(--color-bg-surface)] p-6 rounded-xl border border-[var(--color-border)] flex flex-col gap-4">
         {/* Header */}
         <div>
@@ -203,10 +155,10 @@ const CompetitorCard: React.FC<{ competitor: ValidatedCompetitor }> = ({ competi
 
         {/* Social Links */}
         <div className="flex items-center gap-4 border-t border-[var(--color-border)] pt-4">
-            {competitor.socialPresence?.websiteUrl?.url && <SocialLink platformIcon={<GlobeIcon />} link={competitor.socialPresence.websiteUrl} />}
-            {competitor.socialPresence?.instagram?.url && <SocialLink platformIcon={<InstagramIcon />} link={competitor.socialPresence.instagram} />}
-            {competitor.socialPresence?.facebook?.url && <SocialLink platformIcon={<FacebookIcon />} link={competitor.socialPresence.facebook} />}
-            {competitor.socialPresence?.tiktok?.url && <SocialLink platformIcon={<TikTokIcon />} link={competitor.socialPresence.tiktok} />}
+            <SocialLink platformIcon={<GlobeIcon />} url={competitor.socialPresence?.websiteUrl} />
+            <SocialLink platformIcon={<InstagramIcon />} url={competitor.socialPresence?.instagram} />
+            <SocialLink platformIcon={<FacebookIcon />} url={competitor.socialPresence?.facebook} />
+            <SocialLink platformIcon={<TikTokIcon />} url={competitor.socialPresence?.tiktok} />
         </div>
     </div>
 );
@@ -216,91 +168,13 @@ const CompetitorCard: React.FC<{ competitor: ValidatedCompetitor }> = ({ competi
 const StrategicConsultant: React.FC = () => {
     const [query, setQuery] = useState('');
     const [socialLink, setSocialLink] = useState('');
-    const [analysisResult, setAnalysisResult] = useState<ValidatedStrategicAnalysisResult | null>(null);
+    const [analysisResult, setAnalysisResult] = useState<StrategicAnalysisResult | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [isExportingPDF, setIsExportingPDF] = useState(false);
     const [isExportingCSV, setIsExportingCSV] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const resultsRef = useRef<HTMLDivElement>(null);
     const [activeTab, setActiveTab] = useState('summary');
-
-    const validateUrl = async (url: string): Promise<{ status: 'valid' | 'invalid', finalUrl: string, error?: string }> => {
-        let sanitizedUrl = url.trim();
-        if (!sanitizedUrl) {
-            return { status: 'invalid', finalUrl: '', error: 'URL vazia.' };
-        }
-        if (!/^(https?:\/\/)/i.test(sanitizedUrl)) {
-            sanitizedUrl = 'https://' + sanitizedUrl;
-        }
-        
-        try {
-            // NOTE: This client-side fetch can be blocked by CORS for the HEAD request.
-            // A server-side proxy would be a more robust solution.
-            const response = await fetch(sanitizedUrl, { method: 'HEAD', redirect: 'follow' });
-            
-            if (!response.ok) {
-                 throw new Error(`Erro de HTTP: ${response.status}`);
-            }
-            
-            // Clean tracking params from the final URL
-            const finalUrl = new URL(response.url);
-            const trackingParams = ['utm_source','utm_medium','utm_campaign','utm_term','utm_content','fbclid','gclid','msclkid','mc_cid','mc_eid','igshid','igsh'];
-            trackingParams.forEach(param => finalUrl.searchParams.delete(param));
-            
-            return { status: 'valid', finalUrl: finalUrl.toString() };
-        } catch (e) {
-            const errorMessage = e instanceof Error ? e.message : 'Erro desconhecido.';
-            console.error(`Falha ao validar o link ${url}: ${errorMessage}. O link pode estar offline ou bloquear verificações.`);
-            return { status: 'invalid', finalUrl: sanitizedUrl, error: errorMessage };
-        }
-    };
-    
-    const validateAllLinks = async (resultToValidate: ValidatedStrategicAnalysisResult) => {
-        if (!resultToValidate.competitiveLandscape?.competitors) return;
-    
-        const validationPromises = resultToValidate.competitiveLandscape.competitors.flatMap((competitor, competitorIndex) => 
-            Object.entries(competitor.socialPresence || {}).map(async ([platform, link]) => {
-                if (link.status === 'validating') {
-                    const validationResult = await validateUrl(link.url);
-                    setAnalysisResult(currentResult => {
-                        if (!currentResult?.competitiveLandscape?.competitors) return currentResult;
-                        
-                        const newCompetitors = [...currentResult.competitiveLandscape.competitors];
-                        if (!newCompetitors[competitorIndex]) return currentResult;
-
-                        const newSocialPresence = { ...newCompetitors[competitorIndex].socialPresence };
-
-                        newSocialPresence[platform] = {
-                            ...link,
-                            status: validationResult.status,
-                            finalUrl: validationResult.finalUrl,
-                            error: validationResult.error,
-                        };
-                        
-                        newCompetitors[competitorIndex] = {
-                            ...newCompetitors[competitorIndex],
-                            socialPresence: newSocialPresence
-                        };
-
-                        return {
-                            ...currentResult,
-                            competitiveLandscape: {
-                                ...currentResult.competitiveLandscape,
-                                competitors: newCompetitors,
-                            }
-                        };
-                    });
-                }
-            })
-        );
-        await Promise.allSettled(validationPromises);
-    };
-
-    useEffect(() => {
-        if (analysisResult?.competitiveLandscape) {
-            validateAllLinks(analysisResult);
-        }
-    }, [analysisResult?.title]); // Run validation only when a new report is loaded
 
     const handleAnalysis = useCallback(async () => {
         if (!query.trim()) {
@@ -314,39 +188,11 @@ const StrategicConsultant: React.FC = () => {
         setActiveTab('summary');
 
         try {
-            const rawResult: RawStrategicAnalysisResult = await fetchStrategicAnalysis(query, socialLink);
+            const rawResult: StrategicAnalysisResult = await fetchStrategicAnalysis(query, socialLink);
             if (!rawResult || !rawResult.executiveSummary) {
                  throw new Error("A IA retornou uma resposta vazia. Tente refinar sua descrição ou tente novamente.");
             }
-
-            const transformedResult: ValidatedStrategicAnalysisResult = {
-                ...rawResult,
-                competitiveLandscape: rawResult.competitiveLandscape ? {
-                    ...rawResult.competitiveLandscape,
-                    competitors: (rawResult.competitiveLandscape.competitors || []).map((competitor: RawCompetitor) => {
-                        const transformLink = (url: string | undefined): SocialLinkWithStatus => {
-                            const sanitized = (url || '').trim();
-                            return {
-                                url: sanitized,
-                                status: sanitized ? 'validating' : 'invalid',
-                                finalUrl: sanitized,
-                                error: sanitized ? undefined : 'URL não fornecida.',
-                            };
-                        };
-                        return {
-                            ...competitor,
-                            socialPresence: {
-                                websiteUrl: transformLink(competitor.socialPresence?.websiteUrl),
-                                instagram: transformLink(competitor.socialPresence?.instagram),
-                                facebook: transformLink(competitor.socialPresence?.facebook),
-                                tiktok: transformLink(competitor.socialPresence?.tiktok),
-                            }
-                        };
-                    })
-                } : undefined
-            };
-
-            setAnalysisResult(transformedResult);
+            setAnalysisResult(rawResult);
         } catch (err) {
             const errorMessage = err instanceof Error ? err.message : 'Ocorreu um erro desconhecido.';
             setError(errorMessage);
@@ -408,7 +254,7 @@ const StrategicConsultant: React.FC = () => {
             const rows = competitors.map(c => {
                 const row = [
                     c.name,
-                    c.socialPresence?.websiteUrl?.finalUrl,
+                    c.socialPresence?.websiteUrl,
                     c.estimatedMonthlyTraffic,
                     c.socialEngagement?.platform || 'N/A',
                     c.socialEngagement?.followers || 'N/A',
