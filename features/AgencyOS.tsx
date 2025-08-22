@@ -92,8 +92,21 @@ const TaskModal = ({ task, onUpdateTask, onClose, clientName }) => {
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
-        const newAttachment: AgencyTaskAttachment = { id: Date.now().toString(), fileName: file.name, url: '#', uploadedAt: new Date().toISOString() };
-        onUpdateTask({ ...task, attachments: [...(task.attachments || []), newAttachment] });
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            const fileUrl = event.target?.result as string;
+            if (fileUrl) {
+                const newAttachment: AgencyTaskAttachment = {
+                    id: Date.now().toString(),
+                    fileName: file.name,
+                    url: fileUrl,
+                    uploadedAt: new Date().toISOString()
+                };
+                onUpdateTask({ ...task, attachments: [...(task.attachments || []), newAttachment] });
+            }
+        };
+        reader.readAsDataURL(file);
     };
     
     return (
@@ -126,7 +139,16 @@ const TaskModal = ({ task, onUpdateTask, onClose, clientName }) => {
                     <div>
                         <h4 className="font-semibold text-white mb-2 flex items-center gap-2"><PaperclipIcon size={18} />Anexos</h4>
                         <div className="space-y-2">
-                           {(task.attachments || []).map(att => <div key={att.id} className="text-sm text-blue-400 hover:underline cursor-pointer">{att.fileName}</div>)}
+                           {(task.attachments || []).map(att => (
+                               <a 
+                                   key={att.id}
+                                   href={att.url}
+                                   download={att.fileName}
+                                   className="text-sm text-blue-400 hover:underline block"
+                               >
+                                   {att.fileName}
+                               </a>
+                           ))}
                            <input type="file" id={`file-upload-${task.id}`} onChange={handleFileUpload} className="hidden"/>
                            <label htmlFor={`file-upload-${task.id}`} className="text-sm text-[var(--color-accent)] cursor-pointer">+ Adicionar anexo</label>
                         </div>

@@ -47,19 +47,49 @@ const MarkdownRenderer: React.FC<{ text: any }> = ({ text }) => {
 
 
 // === SUB-COMPONENTS ===
-const SocialLink: React.FC<{ platformIcon: React.ReactNode; url?: string }> = ({ platformIcon, url }) => {
+const SocialLink: React.FC<{ platform: 'websiteUrl' | 'instagram' | 'facebook' | 'tiktok'; url?: string }> = ({ platform, url }) => {
     if (!url || typeof url !== 'string' || !url.trim()) {
         return null;
     }
+
+    let href = url.trim();
+
+    // Check if it's already a valid-looking full URL
+    if (!/^(https?:\/\/)/.test(href)) {
+        switch (platform) {
+            case 'instagram':
+                href = `https://www.instagram.com/${href.replace(/^@/, '')}`;
+                break;
+            case 'facebook':
+                // Facebook URLs can be complex, but for pages this is a common pattern.
+                href = `https://www.facebook.com/${href}`;
+                break;
+            case 'tiktok':
+                href = `https://www.tiktok.com/@${href.replace(/^@/, '')}`;
+                break;
+            case 'websiteUrl':
+            default:
+                href = `https://${href}`;
+                break;
+        }
+    }
     
-    const href = url.startsWith('http') ? url : `https://${url}`;
+    const platformIcons = {
+        websiteUrl: <GlobeIcon />,
+        instagram: <InstagramIcon />,
+        facebook: <FacebookIcon />,
+        tiktok: <TikTokIcon />,
+    };
+
+    const icon = platformIcons[platform] || <GlobeIcon />;
 
     return (
         <a href={href} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-red-400 transition-colors">
-            {platformIcon}
+            {icon}
         </a>
     );
 };
+
 
 const TabButton: React.FC<{ active: boolean; onClick: () => void; children: React.ReactNode }> = ({ active, onClick, children }) => (
     <button
@@ -155,10 +185,10 @@ const CompetitorCard: React.FC<{ competitor: Competitor }> = ({ competitor }) =>
 
         {/* Social Links */}
         <div className="flex items-center gap-4 border-t border-[var(--color-border)] pt-4">
-            <SocialLink platformIcon={<GlobeIcon />} url={competitor.socialPresence?.websiteUrl} />
-            <SocialLink platformIcon={<InstagramIcon />} url={competitor.socialPresence?.instagram} />
-            <SocialLink platformIcon={<FacebookIcon />} url={competitor.socialPresence?.facebook} />
-            <SocialLink platformIcon={<TikTokIcon />} url={competitor.socialPresence?.tiktok} />
+            <SocialLink platform="websiteUrl" url={competitor.socialPresence?.websiteUrl} />
+            <SocialLink platform="instagram" url={competitor.socialPresence?.instagram} />
+            <SocialLink platform="facebook" url={competitor.socialPresence?.facebook} />
+            <SocialLink platform="tiktok" url={competitor.socialPresence?.tiktok} />
         </div>
     </div>
 );
